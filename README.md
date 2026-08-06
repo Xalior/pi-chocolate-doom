@@ -7,6 +7,11 @@ nothing else running beside it.
 It builds for the Raspberry Pi 3, Pi 4 and Pi 5, all three from one source
 tree.
 
+![Doom running on a Raspberry Pi 5 with no operating system](docs/doom-on-bare-metal.jpg)
+
+*Captured from the Pi 5's HDMI output. The board is running this image and
+nothing else — no kernel underneath it, no window system, no launcher.*
+
 ## What this is
 
 [Chocolate Doom](https://github.com/chocolate-doom/chocolate-doom) is a
@@ -34,9 +39,9 @@ Three processor cores are given separate work:
 
 ## State of this port
 
-This is an early port. It builds and links completely, for all three boards,
-and it has not yet been run on hardware. The list below is what the code
-does, not what has been observed.
+It builds for all three boards and it plays. The screenshot above is the Pi
+5's own HDMI output, with the game reading its WAD from the SD card and
+rendering at full speed.
 
 **Present:**
 
