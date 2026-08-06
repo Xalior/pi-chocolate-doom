@@ -64,8 +64,7 @@ TARGET = $(OBJDIR)/$(IMAGE)
 
 # The kernel wrapper, the syscall layer and this port's own SDL layers: C++,
 # and this project's own code.
-HOST_SRCS = main.cpp kernel.cpp circle_syscalls.cpp circle_stubs.cpp \
-	sdl_ext_stubs.cpp
+HOST_SRCS = main.cpp kernel.cpp circle_syscalls.cpp circle_stubs.cpp
 HOST_OBJS = $(addprefix $(OBJDIR)/,$(HOST_SRCS:.cpp=.o))
 
 # Chocolate Doom's source list for the Doom executable, as upstream's
@@ -170,9 +169,8 @@ endif
 # the path in its own right alongside the SDL2/-prefixed one this project's
 # own code uses.
 #
-# sdl2ext/ carries three headers upstream expects a configured build to
-# supply: config.h, and the interfaces of the two companion libraries this
-# port has no implementation of (see the files themselves).
+# sdl2ext/ carries config.h, which upstream's own build system generates
+# while configuring a desktop build and which this port writes down instead.
 #
 # The game's own directories are on the path the way its build system puts
 # them there: src/ for the shared code, and the library directories for the
@@ -186,7 +184,19 @@ INCLUDE := -I $(SHIM)/include -I $(SHIM)/include/SDL2 \
 # stated here rather than added to CFLAGS because Rules.mk folds CFLAGS into
 # the C++ flags as well, and a C standard handed to the C++ compiler is a
 # warning on every C++ file in the build. $(STANDARD) above covers those.
-DOOM_CFLAGS = -std=gnu99 $(CFLAGS)
+DOOM_CFLAGS = -std=gnu99 $(DOOM_DEFINE) $(CFLAGS)
+
+# SDL_mixer and SDL_net are separate libraries from SDL2, and
+# circle-libsdl2 provides neither: it implements SDL's own audio API and has
+# no network stack behind it. Chocolate Doom carries a build for exactly this
+# case, and these are the switches that select it — upstream's own, offered
+# by its CMakeLists as ENABLE_SDL2_MIXER and ENABLE_SDL2_NET.
+#
+# What they change is which code exists. Every sound and music backend, and
+# the network transport, compile to a version that reports it cannot start,
+# so the game runs silent and single player and says why. Nothing is cut out
+# of the build and nothing here has to imitate a library it does not have.
+DOOM_DEFINE = -DDISABLE_SDL2MIXER=1 -DDISABLE_SDL2NET=1
 
 # The shim comes in whole, every member, rather than only the members the
 # link happens to need. An object file linked straight into the kernel beats

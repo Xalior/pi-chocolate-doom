@@ -50,16 +50,17 @@ does, not what has been observed.
 
 - **Sound and music.** Chocolate Doom's sound and music backends are all
   written against SDL_mixer, which is a separate library from SDL2 and which
-  circle-libsdl2 does not provide. `host/sdl_ext_stubs.cpp` supplies
-  SDL_mixer as a device that never opens, so the game reports that it could
-  not start any sound backend and runs silent. The underlying audio output
-  does exist — circle-libsdl2 implements SDL's own audio API — so what is
-  missing is a mixer between the two.
+  circle-libsdl2 does not provide. The game is built with upstream's own
+  `DISABLE_SDL2MIXER`, so every backend compiles to a version that reports it
+  cannot start, and the game runs silent and says why. The underlying audio
+  output does exist — circle-libsdl2 implements SDL's own audio API — so what
+  is missing is a mixer between the two.
 - **Mouse.** circle-libsdl2 answers every SDL mouse call, but the pointer it
   reports never moves. The game is started with `-nomouse` so that nothing
   waits on a pointer that will not arrive.
 - **Multiplayer.** Chocolate Doom's network transport is written against
-  SDL_net, which circle-libsdl2 also does not provide, so the game is single
+  SDL_net, which circle-libsdl2 also does not provide. Upstream's own
+  `DISABLE_SDL2NET` selects the build without it, so the game is single
   player.
 
 ## What you need to supply
@@ -193,7 +194,7 @@ game wants, because a slowed processor drops frames.
 | `kernel.cpp`, `kernel.h`, `main.cpp` | The Circle kernel: brings up the serial console, the SD card and the filesystem, elects the three cores, and calls the game. |
 | `circle_syscalls.cpp` | Puts the SD card underneath the C library in a way that is legal from a core that does not own the hardware. |
 | `circle_stubs.cpp` | The 8-bit paletted surfaces and the once-a-frame conversion to 32-bit that Doom's rendering needs, which the SDL2 layer does not implement. |
-| `sdl_ext_stubs.cpp`, `sdl2ext/` | SDL_mixer and SDL_net, declared and implemented as libraries that never start, plus the build configuration upstream's own build system would otherwise generate. |
+| `sdl2ext/config.h` | The build configuration upstream's own build system would otherwise generate. |
 | `config.txt`, `cmdline.txt` | Firmware boot configuration, one file for all three boards. |
 | `chocolate-doom.cfg`, `default.cfg` | The game's settings, staged onto the card. |
 

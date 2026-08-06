@@ -353,9 +353,8 @@ int SDL_LowerBlit(SDL_Surface *src, SDL_Rect *srcrect,
     SDL_Rect dr = (dstrect != nullptr) ? *dstrect : WholeSurface(dst);
 
     // The rectangles are taken as given, and only the SOURCE is checked
-    // against the memory behind it. This is the lower blit: SDL's contract
-    // is that the caller has already clipped, and SDL_UpperBlit below is the
-    // entry point that does the clipping.
+    // against the memory behind it. This is the LOWER blit, and SDL's
+    // contract for it is that the caller has already clipped.
     //
     // Clipping against the destination surface's own w and h here would be
     // actively wrong for the one caller that matters. Chocolate Doom points
@@ -428,38 +427,6 @@ int SDL_LowerBlit(SDL_Surface *src, SDL_Rect *srcrect,
     return -1;
 }
 
-// The clipping entry point, and what SDL_BlitSurface is a name for. It
-// trims the blit to both surfaces and then does the work below.
-int SDL_UpperBlit(SDL_Surface *src, const SDL_Rect *srcrect,
-                  SDL_Surface *dst, SDL_Rect *dstrect)
-{
-    if (src == nullptr || dst == nullptr)
-    {
-        SDL_SetError("SDL_UpperBlit: no source or no destination");
-        return -1;
-    }
-
-    SDL_Rect sr = (srcrect != nullptr) ? *srcrect : WholeSurface(src);
-    SDL_Rect dr = (dstrect != nullptr) ? *dstrect : WholeSurface(dst);
-
-    if (dr.x < 0) { sr.x -= dr.x; sr.w += dr.x; dr.w += dr.x; dr.x = 0; }
-    if (dr.y < 0) { sr.y -= dr.y; sr.h += dr.y; dr.h += dr.y; dr.y = 0; }
-    if (dr.x + dr.w > dst->w) { dr.w = dst->w - dr.x; }
-    if (dr.y + dr.h > dst->h) { dr.h = dst->h - dr.y; }
-    sr.w = dr.w;
-    sr.h = dr.h;
-
-    if (dstrect != nullptr)
-    {
-        dstrect->w = dr.w;
-        dstrect->h = dr.h;
-    }
-    if (dr.w <= 0 || dr.h <= 0)
-        return 0;
-
-    return SDL_LowerBlit(src, &sr, dst, &dr);
-}
-
 // ---------------------------------------------------------------------------
 // Window and renderer calls with nothing to do on this board
 // ---------------------------------------------------------------------------
@@ -473,7 +440,6 @@ int SDL_SetWindowFullscreen(SDL_Window *, Uint32) { return 0; }
 void SDL_SetWindowSize(SDL_Window *, int, int) {}
 void SDL_SetWindowMinimumSize(SDL_Window *, int, int) {}
 void SDL_SetWindowIcon(SDL_Window *, SDL_Surface *) {}
-void SDL_SetWindowPosition(SDL_Window *, int, int) {}
 int SDL_RenderSetLogicalSize(SDL_Renderer *, int, int) { return 0; }
 int SDL_RenderSetIntegerScale(SDL_Renderer *, SDL_bool) { return 0; }
 
@@ -564,47 +530,16 @@ int SDL_WaitEvent(SDL_Event *event)
     }
 }
 
-// There is no on-screen keyboard to position.
-void SDL_SetTextInputRect(const SDL_Rect *) {}
-
 // ---------------------------------------------------------------------------
-// Audio conversion
+// Mutexes and condition variables
 // ---------------------------------------------------------------------------
 //
-// The shim implements the callback audio API but none of SDL's format
-// conversion. Chocolate Doom reaches for these only on the sound paths this
-// port does not have yet, so they report failure rather than silence.
-
-void SDL_PauseAudio(int pause_on) { SDL_PauseAudioDevice(1, pause_on); }
-
-int SDL_BuildAudioCVT(SDL_AudioCVT *, SDL_AudioFormat, Uint8, int,
-                      SDL_AudioFormat, Uint8, int)
-{
-    SDL_SetError("audio conversion is not implemented");
-    return -1;
-}
-
-int SDL_ConvertAudio(SDL_AudioCVT *)
-{
-    SDL_SetError("audio conversion is not implemented");
-    return -1;
-}
-
-void SDL_MixAudioFormat(Uint8 *, const Uint8 *, SDL_AudioFormat, Uint32, int) {}
-
-// ---------------------------------------------------------------------------
-// Threads, mutexes and condition variables
-// ---------------------------------------------------------------------------
-//
-// The game runs alone on the application core and creates no threads of its
-// own; only the sound backends do, and they are not reachable in this port.
-// So these exist for the linker, and each says so at runtime rather than
-// handing back something that looks like a working thread.
-//
-// The mutexes are real, because they cost almost nothing to make real: a
-// ticket-free test-and-set over one word. Nothing on this board contends for
-// them today, and a lock that quietly did nothing would be the wrong thing
-// to leave behind for the day something does.
+// The OPL emulation guards its callback queue with these, and reaches them
+// whether or not it ever produces a sound. There are no threads on this
+// board and nothing contends for them, but a lock that quietly did nothing
+// would be the wrong thing to leave behind for the day something does, so
+// the mutexes are real: a test-and-set over one word, which costs almost
+// nothing.
 
 struct SDL_mutex { volatile int held; };
 struct SDL_cond  { volatile unsigned signalled; };
@@ -626,13 +561,6 @@ int SDL_LockMutex(SDL_mutex *mutex)
     while (__atomic_exchange_n(&mutex->held, 1, __ATOMIC_ACQUIRE) != 0)
         asm volatile("yield" ::: "memory");
     return 0;
-}
-
-int SDL_TryLockMutex(SDL_mutex *mutex)
-{
-    if (mutex == nullptr)
-        return -1;
-    return __atomic_exchange_n(&mutex->held, 1, __ATOMIC_ACQUIRE) == 0 ? 0 : SDL_MUTEX_TIMEDOUT;
 }
 
 int SDL_UnlockMutex(SDL_mutex *mutex)
@@ -661,8 +589,6 @@ int SDL_CondSignal(SDL_cond *cond)
     return 0;
 }
 
-int SDL_CondBroadcast(SDL_cond *cond) { return SDL_CondSignal(cond); }
-
 // A wait with nothing that can signal it is a hang, and a hang on a board
 // with no console is indistinguishable from a crash. The only signaller
 // would be a thread, and this port creates none, so an unsignalled wait
@@ -680,34 +606,9 @@ int SDL_CondWait(SDL_cond *cond, SDL_mutex *mutex)
     return -1;
 }
 
-int SDL_CondWaitTimeout(SDL_cond *cond, SDL_mutex *mutex, Uint32)
-{
-    return SDL_CondWait(cond, mutex);
-}
-
-SDL_Thread *SDL_CreateThread(SDL_ThreadFunction, const char *, void *)
-{
-    SDL_SetError("threads are not implemented");
-    return nullptr;
-}
-
-void SDL_WaitThread(SDL_Thread *, int *status)
-{
-    if (status != nullptr)
-        *status = -1;
-}
-
-void SDL_DetachThread(SDL_Thread *) {}
-
 // ---------------------------------------------------------------------------
 // Odds and ends
 // ---------------------------------------------------------------------------
-
-void SDL_qsort(void *base, size_t nmemb, size_t size,
-               int (*compar)(const void *, const void *))
-{
-    qsort(base, nmemb, size, compar);
-}
 
 // Where the game keeps its configuration files and its save games. On a
 // desktop this is a per-user directory; here it is the card directory the
