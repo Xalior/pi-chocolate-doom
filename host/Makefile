@@ -265,7 +265,7 @@ WRAPPED_SDL = SDL_CreateRGBSurface SDL_FreeSurface
 # The link is driven by the cross ld directly (Circle's Rules.mk sets
 # LD = <prefix>ld for GCC builds), so these are plain linker options, not
 # compiler-driver -Wl, ones.
-LDFLAGS += $(addprefix --wrap=,$(WRAPPED_SYSCALLS) $(WRAPPED_SDL))
+LDFLAGS += $(addprefix --wrap=,$(WRAPPED_SYSCALLS) $(WRAPPED_SDL)) $(LDFLAGS_EXTRA)
 
 # ---------------------------------------------------------------------------
 # Compilation
@@ -360,8 +360,37 @@ stub:
 		STUB_BSS='$(STUB_BSS_BYTES)' \
 		image
 
+# The object bisection: the traced stub plus the first BISECT_N of the game's
+# objects, LINKED but never called. i_main.o is excluded because the stub
+# supplies the entry point it would otherwise define twice.
+#
+# Undefined references are ignored on purpose. A slice of a game does not
+# resolve on its own, and the point is to place the objects' BYTES in the
+# image without running any of them; a relocation nobody executes resolving
+# to zero is exactly as inert as the object it sits in.
+#
+#   make bisect RAPI_BOARD=rpi5 BISECT_N=40
+#
+BISECT_ALL = $(filter-out $(OBJDIR)/cd/src/i_main.o,$(CD_OBJS))
+BISECT_N  ?= 0
+
+.PHONY: bisect
+bisect:
+	@$(MAKE) --no-print-directory RAPI_BOARD=$(RAPI_BOARD) \
+		OBJDIR=build/$(RAPI_BOARD)-bisect \
+		BISECT_N=$(BISECT_N) bisect-link
+
+.PHONY: bisect-link
+bisect-link: $(wordlist 1,$(BISECT_N),$(BISECT_ALL))
+	@$(MAKE) --no-print-directory RAPI_BOARD=$(RAPI_BOARD) \
+		OBJDIR=$(OBJDIR) \
+		CD_SRCS= CD_OBJS='$(wordlist 1,$(BISECT_N),$(BISECT_ALL))' \
+		HOST_SRCS="main.cpp kernel.cpp defaults.cpp circle_syscalls.cpp circle_stubs.cpp stub_doom.cpp" \
+		LDFLAGS_EXTRA=--unresolved-symbols=ignore-all \
+		image
+
 # Board-scoped clean: drop just this board's tree, leaving the other two
 # boards' images and objects untouched.
 .PHONY: clean-board
 clean-board:
-	rm -rf $(OBJDIR) build/$(RAPI_BOARD)-stub
+	rm -rf $(OBJDIR) build/$(RAPI_BOARD)-stub build/$(RAPI_BOARD)-bisect
