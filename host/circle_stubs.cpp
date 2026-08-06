@@ -615,7 +615,7 @@ int SDL_CondWait(SDL_cond *cond, SDL_mutex *mutex)
 // what it gets, so this hands back a fresh copy every time.
 char *SDL_GetPrefPath(const char *, const char *)
 {
-    static const char path[] = "/doom/";
+    static const char path[] = RAPI_GAME_DIR "/";
     char *copy = (char *)SDL_malloc(sizeof(path));
     if (copy != nullptr)
         memcpy(copy, path, sizeof(path));

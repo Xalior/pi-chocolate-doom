@@ -165,6 +165,21 @@ ifeq ($(findstring ARM_ALLOW_MULTI_CORE,$(DEFINE)),)
 $(error the payload requires the multicore circle-stdlib world — build it with 'make -C ../circle-libsdl2 deps')
 endif
 
+# WHERE THIS GAME LIVES ON THE CARD. One card carries several games, and two
+# of them writing a `default.cfg` or a `settings.ini` into the FAT root would
+# each silently overwrite the other's. Every game therefore keeps to a
+# directory of its own, and nothing of this port's ever touches the root.
+#
+# It is a build-time constant, not a boot switch: a card's layout is decided
+# when the card is staged, and a game that could be relocated at boot would
+# only mean two places to look for the same file.
+#
+# The path is used ONLY by this port's own host layer — argv, the working
+# directory, and SDL's preference path. Upstream Chocolate Doom is never told
+# about it and needs no patch: it looks where it is pointed.
+RAPI_GAME_DIR ?= /games/doom
+DEFINE += -DRAPI_GAME_DIR='"$(RAPI_GAME_DIR)"'
+
 # Chocolate Doom writes `#include "SDL.h"`, the spelling a desktop
 # sdl2-config include path provides, so the shim's SDL2/ directory goes on
 # the path in its own right alongside the SDL2/-prefixed one this project's

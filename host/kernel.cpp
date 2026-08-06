@@ -6,14 +6,19 @@
 // implementation. This file supplies the first two and starts the third,
 // then calls the game's entry point with a fixed argument list.
 //
-// Where the game looks for things is decided by that argument list and by
-// nothing else. Chocolate Doom searches for an IWAD in the directory holding
-// argv[0], among other places, so argv[0] is an absolute path inside the
-// card's game directory and dropping a WAD next to it is all a card needs.
-// The configuration files and the save games live in the same directory,
-// because this port's SDL_GetPrefPath answers with it (see circle_stubs.cpp).
-// A bare-metal program has no shell and no meaningful working directory, so
-// every path in play here is absolute.
+// EVERYTHING THIS GAME TOUCHES LIVES IN ONE DIRECTORY ON THE CARD,
+// RAPI_GAME_DIR, which the host Makefile sets and nothing upstream knows
+// about. One card carries several games, and two of them writing a
+// `default.cfg` into the card's root would each silently overwrite the
+// other's.
+//
+// Three things point at it, and between them they cover every path the game
+// can reach: argv[0] is an absolute path inside it, so Chocolate Doom's own
+// IWAD search — which looks in the directory holding argv[0] — finds a WAD
+// dropped beside it; SDL_GetPrefPath answers with it, which is where the
+// configuration and the save games go (see circle_stubs.cpp); and this
+// kernel makes it the working directory before the game starts, so anything
+// opened by a relative name lands there too rather than in the root.
 //
 // This kernel also decides the core layout (see kernel.h for the roles) and
 // hands one core to the shim's presentation worker. The library never starts
@@ -29,6 +34,7 @@
 #include <circle/machineinfo.h>
 #include <SDL2/SDL_circle.h>
 #include <SDL2/SDL_error.h>
+#include <unistd.h>
 #include <atomic>
 
 // Chocolate Doom's entry point. It is main() in the upstream source; the
@@ -63,7 +69,7 @@ static const char From[] = "chocolate-doom";
 // block is appended to them before the game runs, so a boot can add to this
 // without the card or the build changing.
 static const char *DoomArgv[] = {
-    "/doom/chocolate-doom",
+    RAPI_GAME_DIR "/chocolate-doom",
     "-nomouse",
 };
 
@@ -270,6 +276,21 @@ TShutdownMode CKernel::Run(void)
                                     sizeof(DoomArgv) / sizeof(DoomArgv[0]),
                                     s_FinalArgv,
                                     sizeof(s_FinalArgv) / sizeof(s_FinalArgv[0]));
+
+    // Move into this game's own directory before the game runs, so every
+    // relative path it opens lands there and never in the card's root. One
+    // card carries several games, and two of them writing a `default.cfg`
+    // into the root would each silently overwrite the other's.
+    //
+    // Done here, on core 0, before the application core is released: the
+    // working directory is one global that both the split and the
+    // everything-on-core-0 path inherit, so this covers each of them once.
+    // A failure is worth saying out loud but is not fatal — the game will
+    // simply look where it was pointed by argv instead.
+    if (chdir(RAPI_GAME_DIR) != 0)
+        m_Logger.Write(From, LogWarning,
+                       "could not enter " RAPI_GAME_DIR
+                       " — relative paths will resolve at the card root");
 
     // Serial key injection, if the block asked for it. Armed HERE, before
     // the split is armed and before the application core is let go: the
