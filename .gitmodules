@@ -1,0 +1,6 @@
+[submodule "chocolate-doom"]
+	path = chocolate-doom
+	url = https://github.com/chocolate-doom/chocolate-doom.git
+[submodule "circle-libsdl2"]
+	path = circle-libsdl2
+	url = https://github.com/Xalior/circle-libsdl2.git
