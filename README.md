@@ -55,9 +55,11 @@ does, not what has been observed.
   cannot start, and the game runs silent and says why. The underlying audio
   output does exist — circle-libsdl2 implements SDL's own audio API — so what
   is missing is a mixer between the two.
-- **Mouse.** circle-libsdl2 answers every SDL mouse call, but the pointer it
-  reports never moves. The game is started with `-nomouse` so that nothing
-  waits on a pointer that will not arrive.
+- **Mouse.** Works. circle-libsdl2 drives a real USB mouse — the whole SDL
+  mouse API, relative mode included — and it has been exercised on the
+  bench: the pointer tracks, a button held across a movement produces a
+  drag, and the wheel reports. This port used to start with `-nomouse`
+  because that driver did not exist. It does now, and the flag is gone.
 - **Multiplayer.** Chocolate Doom's network transport is written against
   SDL_net, which circle-libsdl2 also does not provide. Upstream's own
   `DISABLE_SDL2NET` selects the build without it, so the game is single

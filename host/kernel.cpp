@@ -61,16 +61,18 @@ static const char From[] = "chocolate-doom";
 // an IWAD, so this is what makes /doom/doom1.wad — or doom.wad, doom2.wad,
 // tnt.wad, plutonia.wad — findable with nothing else configured.
 //
-// -nomouse because this port has no working pointer yet. The shim answers
-// every mouse call, but the pointer it reports never moves, and Doom's mouse
-// grab would otherwise sit in the middle of the input path doing nothing.
+// The mouse is left ON. circle-libsdl2 drives a real USB mouse — the whole
+// SDL mouse API, including relative mode — and it has been exercised on the
+// bench: the pointer tracks, a button held across a movement produces a
+// drag, and the wheel reports. This port carried `-nomouse` while that
+// driver did not exist; it does now, so Doom gets the pointer it expects.
 //
 // These are the BAKED arguments. Anything written into the image's defaults
 // block is appended to them before the game runs, so a boot can add to this
-// without the card or the build changing.
+// without the card or the build changing — `-nomouse` among them, if a
+// particular board has no mouse plugged in.
 static const char *DoomArgv[] = {
     RAPI_GAME_DIR "/chocolate-doom",
-    "-nomouse",
 };
 
 // The final list: the baked arguments, plus whatever the block carries.
