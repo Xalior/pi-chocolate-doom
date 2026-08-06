@@ -99,8 +99,6 @@ verify:
 # Game data
 # ---------------------------------------------------------------------------
 #
-# Two directories, and the separation between them is the point.
-#
 #   media/           what `make media` downloads. Gitignored, never shipped,
 #                    and never part of a build.
 #   build/sd-card/   what `make card` stages. It copies from media/ and
