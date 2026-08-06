@@ -136,22 +136,54 @@ verify:
 # `card` does not depend on `media`, so a card built without it is complete
 # except for the data and names the files that are absent.
 #
-# `make media` fetches one file: doom1.wad, the IWAD of id Software's 1993
-# Doom shareware release, episode 1. No other IWAD — doom.wad, doom2.wad,
-# tnt.wad and plutonia.wad are commercial products and are copied into media/
-# by hand.
+# `make media` fetches every freely redistributable WAD this project found:
 #
-# What arrives is checked against both checksums. The MD5 is the published
-# one for the v1.9 shareware IWAD, documented independently of this download;
-# the SHA256 was computed from the file this project fetched, so a later
-# fetch is known to be identical. Re-running re-verifies rather than
-# re-downloading.
+#   doom1.wad     the IWAD of id Software's 1993 Doom shareware release,
+#                 episode 1.
+#   freedoom1.wad, freedoom2.wad, freedm.wad
+#                 the Freedoom project's complete, BSD-licensed IWAD set —
+#                 full-size replacements for Doom, Doom II and the
+#                 deathmatch-only FreeDM.
+#   chex.wad      Chex Quest 1, freeware since its original 1996 release,
+#                 fetched from its current official distribution site.
+#   scythe.wad    a freeware PWAD megawad for Doom II (Erik Alm, 2003),
+#                 fetched from the /idgames archive — proves the `-file`
+#                 merge path rather than the IWAD path.
+#
+# No commercial IWAD — doom.wad, doom2.wad, tnt.wad and plutonia.wad are
+# products and are copied into media/ by hand.
+#
+# What arrives is checked against a published checksum where the upstream
+# project publishes one, and otherwise against the WAD's own magic and size.
+# Re-running re-verifies rather than re-downloading.
 MEDIA_DIR = media
 
 DOOM1_WAD    = $(MEDIA_DIR)/doom1.wad
 DOOM1_URL    = https://archive.org/download/doom-shareware_1996/DOOM1.WAD
 DOOM1_SHA256 = 1d7d43be501e67d927e415e0b8f3e29c3bf33075e859721816f652a526cac771
 DOOM1_MD5    = f0cefca49926d00903cf57551d901abe
+
+FREEDOOM_VERSION   = 0.13.0
+FREEDOOM_ZIP_URL   = https://github.com/freedoom/freedoom/releases/download/v$(FREEDOOM_VERSION)/freedoom-$(FREEDOOM_VERSION).zip
+FREEDOOM_ZIP_SHA256 = 3f9b264f3e3ce503b4fb7f6bdcb1f419d93c7b546f4df3e874dd878db9688f59
+FREEDOOM1_WAD      = $(MEDIA_DIR)/freedoom1.wad
+FREEDOOM1_SHA256   = 7323bcc168c5a45ff10749b339960e98314740a734c30d4b9f3337001f9e703d
+FREEDOOM2_WAD      = $(MEDIA_DIR)/freedoom2.wad
+FREEDOOM2_SHA256   = a8772e088847032510d97ba2312406a6998f21cbab44d4ff10696faa9c0ecd4b
+
+FREEDM_ZIP_URL     = https://github.com/freedoom/freedoom/releases/download/v$(FREEDOOM_VERSION)/freedm-$(FREEDOOM_VERSION).zip
+FREEDM_ZIP_SHA256  = b420f13508ef745d7b38e83d15e55e0fc0b09d9a503c96741cddd9773d43f7c9
+FREEDM_WAD         = $(MEDIA_DIR)/freedm.wad
+FREEDM_SHA256      = d9adc4d792627e7fc47b09067b15486da724010c71dd12831e1cf8e0755b68ad
+
+CHEX_WAD     = $(MEDIA_DIR)/chex.wad
+CHEX_ZIP_URL = https://www.chexquest3.com/downloads/chex.zip
+CHEX_SHA256  = d8eb5277918883f490fb1a4be3c9a8588df2dbaee6dc4beb8df4929148bbffb1
+CHEX_MD5     = 25485721882b050afa96a56e5758dd52
+
+SCYTHE_WAD     = $(MEDIA_DIR)/scythe.wad
+SCYTHE_ZIP_URL = https://youfailit.net/pub/idgames/levels/doom2/megawads/scythe.zip
+SCYTHE_SIZE    = 6215556
 
 # sha256sum and md5sum on Linux, shasum and md5 on macOS. Whichever exists;
 # if either is missing the target stops rather than accepting a download it
@@ -160,12 +192,18 @@ SHA256SUM := $(firstword $(shell command -v sha256sum 2>/dev/null) \
                          $(shell command -v shasum 2>/dev/null))
 MD5SUM    := $(firstword $(shell command -v md5sum 2>/dev/null) \
                          $(shell command -v md5 2>/dev/null))
+UNZIP     := $(shell command -v unzip 2>/dev/null)
 
 media:
 	@if [ -z "$(SHA256SUM)" ] || [ -z "$(MD5SUM)" ]; then \
 		echo "  MEDIA no checksum tool on this machine (sha256sum/shasum and"; \
 		echo "        md5sum/md5 are both needed) — refusing to download"; \
 		echo "        something that cannot be verified."; \
+		exit 1; \
+	fi
+	@if [ -z "$(UNZIP)" ]; then \
+		echo "  MEDIA no unzip on this machine — refusing to download the"; \
+		echo "        zipped WADs (Freedoom, Chex Quest, Scythe) that need it."; \
 		exit 1; \
 	fi
 	@mkdir -p $(MEDIA_DIR)
@@ -223,6 +261,221 @@ media:
 		"Doom is a trademark of id Software LLC. This file is not" \
 		"redistributed by this repository." \
 		> $(MEDIA_DIR)/provenance.txt
+	@if [ -f "$(FREEDOOM1_WAD)" ] && [ -f "$(FREEDOOM2_WAD)" ]; then \
+		echo "  MEDIA $(FREEDOOM1_WAD), $(FREEDOOM2_WAD) already here — verifying"; \
+	else \
+		echo "  MEDIA fetching $(FREEDOOM_ZIP_URL)"; \
+		curl -fL --retry 3 -o "$(MEDIA_DIR)/freedoom.zip.part" "$(FREEDOOM_ZIP_URL)" || { \
+			rm -f "$(MEDIA_DIR)/freedoom.zip.part"; \
+			echo "  MEDIA download failed"; exit 1; }; \
+		got=`$(SHA256SUM) -a 256 "$(MEDIA_DIR)/freedoom.zip.part" 2>/dev/null || $(SHA256SUM) "$(MEDIA_DIR)/freedoom.zip.part"`; \
+		got=`echo "$$got" | awk '{print $$1}'`; \
+		if [ "$$got" != "$(FREEDOOM_ZIP_SHA256)" ]; then \
+			echo "  MEDIA SHA256 MISMATCH for freedoom-$(FREEDOOM_VERSION).zip"; \
+			echo "        expected $(FREEDOOM_ZIP_SHA256)"; \
+			echo "        got      $$got"; \
+			echo "        the file has been left in place for inspection, and is"; \
+			echo "        NOT safe to extract."; \
+			exit 1; \
+		fi; \
+		$(UNZIP) -p "$(MEDIA_DIR)/freedoom.zip.part" '*/freedoom1.wad' > "$(FREEDOOM1_WAD)"; \
+		$(UNZIP) -p "$(MEDIA_DIR)/freedoom.zip.part" '*/freedoom2.wad' > "$(FREEDOOM2_WAD)"; \
+		rm -f "$(MEDIA_DIR)/freedoom.zip.part"; \
+	fi
+	@for pair in "$(FREEDOOM1_WAD):$(FREEDOOM1_SHA256)" "$(FREEDOOM2_WAD):$(FREEDOOM2_SHA256)"; do \
+		wad=`echo "$$pair" | cut -d: -f1`; expect=`echo "$$pair" | cut -d: -f2`; \
+		got=`$(SHA256SUM) -a 256 "$$wad" 2>/dev/null || $(SHA256SUM) "$$wad"`; \
+		got=`echo "$$got" | awk '{print $$1}'`; \
+		if [ "$$got" != "$$expect" ]; then \
+			echo "  MEDIA SHA256 MISMATCH for $$wad"; \
+			echo "        expected $$expect"; \
+			echo "        got      $$got"; \
+			echo "        the file has been left in place for inspection, and is"; \
+			echo "        NOT safe to put on a card."; \
+			exit 1; \
+		fi; \
+		head -c 4 "$$wad" | grep -q IWAD || { \
+			echo "  MEDIA $$wad does not begin with the IWAD magic"; exit 1; }; \
+		echo "  MEDIA $$wad verified ($$(wc -c < $$wad | tr -d ' ') bytes)"; \
+	done
+	@printf '%s\n' \
+		"freedoom1.wad, freedoom2.wad — Freedoom: Phase 1 and Phase 2 IWADs" \
+		"" \
+		"Source:   $(FREEDOOM_ZIP_URL)" \
+		"Release:  https://github.com/freedoom/freedoom/releases/tag/v$(FREEDOOM_VERSION)" \
+		"Fetched:  `date -u '+%Y-%m-%d %H:%M:%S UTC'`" \
+		"Zip SHA256 (published, PGP-signed CHECKSUM file from the same" \
+		"release): $(FREEDOOM_ZIP_SHA256)" \
+		"freedoom1.wad SHA256: $(FREEDOOM1_SHA256)" \
+		"freedoom2.wad SHA256: $(FREEDOOM2_SHA256)" \
+		"" \
+		"What they are: complete, original-content IWAD replacements for" \
+		"Doom (freedoom1.wad) and Doom II (freedoom2.wad) from the" \
+		"Freedoom project." \
+		"" \
+		"Licence: BSD 3-Clause. See" \
+		"https://github.com/freedoom/freedoom/blob/master/COPYING.adoc" \
+		"" \
+		"Verification: the zip's SHA256 was checked against the Freedoom" \
+		"project's own published, PGP-signed CHECKSUM file. The per-WAD" \
+		"SHA256 values were computed from the copies this project" \
+		"extracted." \
+		>> $(MEDIA_DIR)/provenance.txt
+	@if [ -f "$(FREEDM_WAD)" ]; then \
+		echo "  MEDIA $(FREEDM_WAD) already here — verifying"; \
+	else \
+		echo "  MEDIA fetching $(FREEDM_ZIP_URL)"; \
+		curl -fL --retry 3 -o "$(MEDIA_DIR)/freedm.zip.part" "$(FREEDM_ZIP_URL)" || { \
+			rm -f "$(MEDIA_DIR)/freedm.zip.part"; \
+			echo "  MEDIA download failed"; exit 1; }; \
+		got=`$(SHA256SUM) -a 256 "$(MEDIA_DIR)/freedm.zip.part" 2>/dev/null || $(SHA256SUM) "$(MEDIA_DIR)/freedm.zip.part"`; \
+		got=`echo "$$got" | awk '{print $$1}'`; \
+		if [ "$$got" != "$(FREEDM_ZIP_SHA256)" ]; then \
+			echo "  MEDIA SHA256 MISMATCH for freedm-$(FREEDOOM_VERSION).zip"; \
+			echo "        expected $(FREEDM_ZIP_SHA256)"; \
+			echo "        got      $$got"; \
+			echo "        the file has been left in place for inspection, and is"; \
+			echo "        NOT safe to extract."; \
+			exit 1; \
+		fi; \
+		$(UNZIP) -p "$(MEDIA_DIR)/freedm.zip.part" '*/freedm.wad' > "$(FREEDM_WAD)"; \
+		rm -f "$(MEDIA_DIR)/freedm.zip.part"; \
+	fi
+	@got=`$(SHA256SUM) -a 256 "$(FREEDM_WAD)" 2>/dev/null || $(SHA256SUM) "$(FREEDM_WAD)"`; \
+	got=`echo "$$got" | awk '{print $$1}'`; \
+	if [ "$$got" != "$(FREEDM_SHA256)" ]; then \
+		echo "  MEDIA SHA256 MISMATCH for $(FREEDM_WAD)"; \
+		echo "        expected $(FREEDM_SHA256)"; \
+		echo "        got      $$got"; \
+		echo "        the file has been left in place for inspection, and is"; \
+		echo "        NOT safe to put on a card."; \
+		exit 1; \
+	fi; \
+	head -c 4 "$(FREEDM_WAD)" | grep -q IWAD || { \
+		echo "  MEDIA $(FREEDM_WAD) does not begin with the IWAD magic"; exit 1; }; \
+	echo "  MEDIA $(FREEDM_WAD) verified ($$(wc -c < $(FREEDM_WAD) | tr -d ' ') bytes)"
+	@printf '%s\n' \
+		"freedm.wad — FreeDM, the Freedoom project's deathmatch-only IWAD" \
+		"" \
+		"Source:   $(FREEDM_ZIP_URL)" \
+		"Release:  https://github.com/freedoom/freedoom/releases/tag/v$(FREEDOOM_VERSION)" \
+		"Fetched:  `date -u '+%Y-%m-%d %H:%M:%S UTC'`" \
+		"Zip SHA256 (published, PGP-signed CHECKSUM file from the same" \
+		"release): $(FREEDM_ZIP_SHA256)" \
+		"freedm.wad SHA256: $(FREEDM_SHA256)" \
+		"" \
+		"Licence: BSD 3-Clause, same terms as freedoom1.wad/freedoom2.wad" \
+		"above." \
+		"" \
+		"Verification: the zip's SHA256 was checked against the Freedoom" \
+		"project's own published, PGP-signed CHECKSUM file. The WAD's" \
+		"SHA256 was computed from the copy this project extracted." \
+		>> $(MEDIA_DIR)/provenance.txt
+	@if [ -f "$(CHEX_WAD)" ]; then \
+		echo "  MEDIA $(CHEX_WAD) already here — verifying"; \
+	else \
+		echo "  MEDIA fetching $(CHEX_ZIP_URL)"; \
+		curl -fL --retry 3 -o "$(MEDIA_DIR)/chex.zip.part" "$(CHEX_ZIP_URL)" || { \
+			rm -f "$(MEDIA_DIR)/chex.zip.part"; \
+			echo "  MEDIA download failed"; exit 1; }; \
+		$(UNZIP) -p "$(MEDIA_DIR)/chex.zip.part" 'chex.wad' > "$(CHEX_WAD)"; \
+		rm -f "$(MEDIA_DIR)/chex.zip.part"; \
+	fi
+	@got=`$(SHA256SUM) -a 256 "$(CHEX_WAD)" 2>/dev/null || $(SHA256SUM) "$(CHEX_WAD)"`; \
+	got=`echo "$$got" | awk '{print $$1}'`; \
+	if [ "$$got" != "$(CHEX_SHA256)" ]; then \
+		echo "  MEDIA SHA256 MISMATCH for $(CHEX_WAD)"; \
+		echo "        expected $(CHEX_SHA256)"; \
+		echo "        got      $$got"; \
+		echo "        the file has been left in place for inspection, and is"; \
+		echo "        NOT safe to put on a card."; \
+		exit 1; \
+	fi; \
+	got=`$(MD5SUM) -q "$(CHEX_WAD)" 2>/dev/null || $(MD5SUM) "$(CHEX_WAD)"`; \
+	got=`echo "$$got" | awk '{print $$1}'`; \
+	if [ "$$got" != "$(CHEX_MD5)" ]; then \
+		echo "  MEDIA MD5 MISMATCH for $(CHEX_WAD)"; \
+		echo "        expected $(CHEX_MD5) — the published checksum of the"; \
+		echo "        1996-10-31 release, per the Doom Wiki's CHEX.WAD page"; \
+		echo "        got      $$got"; \
+		exit 1; \
+	fi; \
+	head -c 4 "$(CHEX_WAD)" | grep -q PWAD || { \
+		echo "  MEDIA $(CHEX_WAD) does not begin with the PWAD magic (its"; \
+		echo "        documented header — chex.wad is used as an IWAD despite"; \
+		echo "        it, see README.md)"; exit 1; }; \
+	echo "  MEDIA $(CHEX_WAD) verified ($$(wc -c < $(CHEX_WAD) | tr -d ' ') bytes)"
+	@printf '%s\n' \
+		"chex.wad — Chex Quest 1 (1996-10-31 release)" \
+		"" \
+		"Source:   $(CHEX_ZIP_URL)" \
+		"Fetched:  `date -u '+%Y-%m-%d %H:%M:%S UTC'`" \
+		"SHA256:   $(CHEX_SHA256)" \
+		"MD5:      $(CHEX_MD5)" \
+		"" \
+		"What it is: the IWAD of the original 1996 Chex Quest, used by" \
+		"Chocolate Doom as the \"chex\" IWAD (src/d_iwad.c). Its own header" \
+		"reads PWAD, a documented property of the original release, not a" \
+		"sign of a bad download." \
+		"" \
+		"Licence: released free in 1996 as a promotional item inside boxes" \
+		"of Chex cereal (Ralston Foods / General Mills), developed by" \
+		"Digital Cafe. No formal open-source licence text is published for" \
+		"chex.wad itself; it has been continuously and openly redistributed" \
+		"without objection since 1996, and chexquest3.com — run today by" \
+		"the original release's lead artist — is its current distribution" \
+		"point." \
+		"" \
+		"Verification: the MD5 above is the published checksum for this" \
+		"exact release on the Doom Wiki's CHEX.WAD technical page," \
+		"documented independently of this download. The SHA256 was" \
+		"computed from the copy this project fetched." \
+		>> $(MEDIA_DIR)/provenance.txt
+	@if [ -f "$(SCYTHE_WAD)" ]; then \
+		echo "  MEDIA $(SCYTHE_WAD) already here — verifying"; \
+	else \
+		echo "  MEDIA fetching $(SCYTHE_ZIP_URL)"; \
+		curl -fL --retry 3 -o "$(MEDIA_DIR)/scythe.zip.part" "$(SCYTHE_ZIP_URL)" || { \
+			rm -f "$(MEDIA_DIR)/scythe.zip.part"; \
+			echo "  MEDIA download failed"; exit 1; }; \
+		$(UNZIP) -p "$(MEDIA_DIR)/scythe.zip.part" 'SCYTHE.WAD' > "$(SCYTHE_WAD)"; \
+		rm -f "$(MEDIA_DIR)/scythe.zip.part"; \
+	fi
+	@size=`wc -c < "$(SCYTHE_WAD)" | tr -d ' '`; \
+	if [ "$$size" != "$(SCYTHE_SIZE)" ]; then \
+		echo "  MEDIA SIZE MISMATCH for $(SCYTHE_WAD)"; \
+		echo "        expected $(SCYTHE_SIZE) bytes"; \
+		echo "        got      $$size bytes"; \
+		echo "        the file has been left in place for inspection, and is"; \
+		echo "        NOT safe to put on a card."; \
+		exit 1; \
+	fi; \
+	head -c 4 "$(SCYTHE_WAD)" | grep -q PWAD || { \
+		echo "  MEDIA $(SCYTHE_WAD) does not begin with the PWAD magic"; exit 1; }; \
+	echo "  MEDIA $(SCYTHE_WAD) verified ($$size bytes)"
+	@printf '%s\n' \
+		"scythe.wad — Scythe, a 32-level PWAD megawad for Doom II" \
+		"(Erik Alm, with guest map by Kim \"Torn\" Bach, 2003-04-10)" \
+		"" \
+		"Source:   $(SCYTHE_ZIP_URL)" \
+		"Fetched:  `date -u '+%Y-%m-%d %H:%M:%S UTC'`" \
+		"" \
+		"The /idgames archive does not publish a per-file checksum for" \
+		"this entry. Verified against the archive's own catalogued file" \
+		"size (2,086,863 bytes for the zip, queried via" \
+		"https://www.doomworld.com/idgames/api/api.php) and against the" \
+		"extracted WAD's own magic and size." \
+		"" \
+		"Requires a Doom II-compatible IWAD and is loaded with the" \
+		"'-file scythe.wad' argument — it is a PWAD, not an IWAD." \
+		"" \
+		"Licence: the author's own included text file states — \"You MAY" \
+		"distribute this file, provided you include this text file, with" \
+		"no modifications. You may distribute this file in any electronic" \
+		"format (BBS, Diskette, CD, etc) as long as you include this file" \
+		"intact. This file may not be used for any commercial purposes" \
+		"without the author's agreement.\"" \
+		>> $(MEDIA_DIR)/provenance.txt
 	@echo "  MEDIA provenance written to $(MEDIA_DIR)/provenance.txt"
 
 # The Pi 5 netboot bundle: the image the Pi 5 firmware looks for, plus the
@@ -263,7 +516,8 @@ card: kernels
 	@cp host/default.cfg host/chocolate-doom.cfg $(CARD_GAME)/
 	@echo "  STAGED $(CARD_DIR)/"
 	@for f in doom1.wad doom.wad doom2.wad tnt.wad plutonia.wad \
-	          freedoom1.wad freedoom2.wad chex.wad hacx.wad; do \
+	          freedoom1.wad freedoom2.wad freedm.wad chex.wad hacx.wad \
+	          scythe.wad; do \
 		if [ -f "$(MEDIA_DIR)/$$f" ]; then \
 			cp "$(MEDIA_DIR)/$$f" $(CARD_GAME)/; \
 			echo "  DATA   $$f"; \

@@ -73,30 +73,79 @@ rendering at full speed.
 ## What you need to supply
 
 **This repository contains no game data, and cannot.** Doom's levels,
-graphics and sounds live in a WAD file that is not part of the engine and is
-not this project's to distribute. Building the images does not download one,
+graphics and sounds live in WAD files that are not part of the engine and are
+not this project's to distribute. Building the images does not download any,
 and neither does writing a card.
 
-You need one IWAD file. The engine recognises several:
+You need at least one IWAD file. The engine recognises several:
 
 | File | What it is |
 |---|---|
 | `doom1.wad` | The Doom shareware episode. Freely redistributable by id Software's own terms, and a complete playable game on its own. |
+| `freedoom1.wad`, `freedoom2.wad` | [Freedoom](https://freedoom.github.io/)'s Phase 1 and Phase 2 — complete, original-content replacements for Doom and Doom II, BSD 3-Clause licensed. |
+| `freedm.wad` | Freedoom's deathmatch-only IWAD, same licence. |
+| `chex.wad` | Chex Quest 1, freeware since its original 1996 release. |
 | `doom.wad` | The full registered Doom, or The Ultimate Doom. |
 | `doom2.wad` | Doom II. |
 | `tnt.wad`, `plutonia.wad` | Final Doom. |
 
 Where to get one legitimately:
 
-- **The shareware WAD** is distributed by id Software for free copying. It
-  travels inside the original shareware release, which is archived at the
-  Internet Archive and mirrored by many Doom community sites.
-- **Every other WAD is a commercial product.** Use the copy inside a version
-  you own — the Steam, GOG or disc release all install the WAD as a plain
-  file, and copying that file to the card is all that is needed.
+```sh
+make media
+```
 
-Do not use a copy obtained by working around a licence, a paywall or a
-copy-protection system. There is a free and complete option above.
+fetches the freely redistributable set — `doom1.wad`, `freedoom1.wad`,
+`freedoom2.wad`, `freedm.wad`, `chex.wad`, and the freeware PWAD `scythe.wad`
+described below — into `media/`, verifying each against a published checksum
+where one exists and against the file's own magic and size otherwise. It
+writes `media/provenance.txt` naming exactly where each file came from and
+under what licence. Re-running it re-verifies what is already there rather
+than downloading again.
+
+**Every other IWAD is a commercial product.** Use the copy inside a version
+you own — the Steam, GOG or disc release all install the WAD as a plain
+file — and copy that file into `media/` by hand; `make media` does not fetch
+it and does not try to. Do not use a copy obtained by working around a
+licence, a paywall or a copy-protection system.
+
+### Several IWADs on one card
+
+`make card` stages every recognised WAD it finds in `media/`, not just one,
+so a card can carry the whole set — the port picks between them at boot.
+
+Chocolate Doom's own search order, read from its `src/d_iwad.c`, is a fixed
+table checked in this order, and the first name in the table that exists in
+the game's directory on the card wins:
+
+    doom2.wad, plutonia.wad, tnt.wad, doom.wad, doom1.wad, doom2f.wad,
+    chex.wad, hacx.wad, freedoom2.wad, freedoom1.wad, freedm.wad,
+    heretic.wad, heretic1.wad, hexen.wad, strife1.wad
+
+So a card carrying only the free set fetched by `make media` boots
+`doom1.wad` by default — it is earlier in the table than `chex.wad`,
+`freedoom2.wad`, `freedoom1.wad` and `freedm.wad`, all of which are present.
+
+To force a specific IWAD regardless of table order, pass `-iwad <filename>`
+as a game argument — for example `-iwad freedoom2.wad`. Game arguments reach
+this port through the image's defaults block, a plain text argument string a
+pre-boot writer stamps into the image at a fixed offset (see
+`host/defaultsblock.h`); this repository's own build ships that block empty,
+so an unwritten image falls back to the table order above.
+
+### Loading a PWAD
+
+`scythe.wad`, fetched by `make media`, is a freeware PWAD — a 32-level
+megawad for Doom II by Erik Alm, with a guest map by Kim "Torn" Bach,
+released 2003. `make card` stages it alongside the IWADs, but it does not
+load on its own: it needs a Doom II-compatible IWAD present (`doom2.wad`,
+`freedoom2.wad` or `freedm.wad`) and Chocolate Doom's own `-file` argument
+to merge it in:
+
+    -file scythe.wad
+
+That combines with an `-iwad` override in the same defaults-block string,
+for example `-iwad freedoom2.wad -file scythe.wad`.
 
 ## Building
 
@@ -149,15 +198,17 @@ make card
 
 That stages the card into `build/sd-card/` for you to copy onto FAT32 media:
 the three kernel images under the names each board's firmware looks for, the
-boot configuration, and the game's two configuration files in `doom/`.
+boot configuration, the game's two configuration files in `doom/`, and every
+recognised WAD found in `media/` (run `make media` first — see above — or
+copy a commercial WAD there by hand). `make card` names any WAD it did not
+find rather than failing silently.
 
-Two things are not staged and have to be added by hand:
+One thing is not staged and has to be added by hand:
 
-1. **The Raspberry Pi firmware files** — `bootcode.bin`, `start*.elf`,
-   `fixup*.dat` and, for the Pi 4, `armstub8-rpi4.bin`. Take them from a
-   Raspberry Pi OS card or from the
-   [firmware repository](https://github.com/raspberrypi/firmware).
-2. **An IWAD**, in `doom/`. See above.
+- **The Raspberry Pi firmware files** — `bootcode.bin`, `start*.elf`,
+  `fixup*.dat` and, for the Pi 4, `armstub8-rpi4.bin`. Take them from a
+  Raspberry Pi OS card or from the
+  [firmware repository](https://github.com/raspberrypi/firmware).
 
 ### The configuration files
 
