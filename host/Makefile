@@ -199,17 +199,6 @@ DOOM_CFLAGS = -std=gnu99 $(DOOM_DEFINE) $(CFLAGS)
 # of the build and nothing here has to imitate a library it does not have.
 DOOM_DEFINE = -DDISABLE_SDL2MIXER=1 -DDISABLE_SDL2NET=1
 
-# Set only by the `stub` target below, and empty for every real build.
-ifneq ($(STUB_PAD),)
-DEFINE += -DSTUB_PAD_BYTES=$(STUB_PAD)
-endif
-ifneq ($(STUB_BSS),)
-DEFINE += -DSTUB_BSS_BYTES=$(STUB_BSS)
-endif
-ifeq ($(STUB_PAD_LANG),c)
-DEFINE += -DSTUB_PAD_IN_C=1
-endif
-
 # The shim comes in whole, every member, rather than only the members the
 # link happens to need. An object file linked straight into the kernel beats
 # an archive member of the same name and does it silently, so a stub in
@@ -265,7 +254,7 @@ WRAPPED_SDL = SDL_CreateRGBSurface SDL_FreeSurface
 # The link is driven by the cross ld directly (Circle's Rules.mk sets
 # LD = <prefix>ld for GCC builds), so these are plain linker options, not
 # compiler-driver -Wl, ones.
-LDFLAGS += $(addprefix --wrap=,$(WRAPPED_SYSCALLS) $(WRAPPED_SDL)) $(LDFLAGS_EXTRA)
+LDFLAGS += $(addprefix --wrap=,$(WRAPPED_SYSCALLS) $(WRAPPED_SDL))
 
 # ---------------------------------------------------------------------------
 # Compilation
@@ -342,81 +331,8 @@ image: $(TARGET).img
 		exit 1; \
 	fi
 
-# The bisection image: the host scaffolding with the game's objects replaced
-# by one stub that reports it was reached (see stub_doom.cpp). It is built
-# into its own directory so it never sits where the real image belongs and
-# cannot be picked up by mistake.
-#
-# The gate is applied to it too. An instrument that cannot be driven by the
-# same pre-boot writer as the real image is an instrument that answers a
-# different question from the one being asked.
-.PHONY: stub
-stub:
-	@$(MAKE) --no-print-directory RAPI_BOARD=$(RAPI_BOARD) \
-		OBJDIR=build/$(RAPI_BOARD)-stub \
-		CD_SRCS= CD_OBJS='$(if $(filter c,$(STUB_PAD_LANG)),build/$(RAPI_BOARD)-stub/stub_pad.o)' \
-		HOST_SRCS="main.cpp kernel.cpp defaults.cpp circle_syscalls.cpp circle_stubs.cpp stub_doom.cpp" \
-		STUB_PAD='$(STUB_PAD_BYTES)' STUB_PAD_LANG='$(STUB_PAD_LANG)' \
-		STUB_BSS='$(STUB_BSS_BYTES)' \
-		image
-
-# The object bisection: the traced stub plus the first BISECT_N of the game's
-# objects, LINKED but never called. i_main.o is excluded because the stub
-# supplies the entry point it would otherwise define twice.
-#
-# Undefined references are ignored on purpose. A slice of a game does not
-# resolve on its own, and the point is to place the objects' BYTES in the
-# image without running any of them; a relocation nobody executes resolving
-# to zero is exactly as inert as the object it sits in.
-#
-#   make bisect RAPI_BOARD=rpi5 BISECT_N=40
-#
-BISECT_ALL = $(filter-out $(OBJDIR)/cd/src/i_main.o,$(CD_OBJS))
-BISECT_N  ?= 0
-
-# The image is DELETED before every link. The objects are deliberately kept
-# between slices so a bisection step costs a link rather than 150 compiles —
-# but that leaves an image on disk that is newer than every object in a
-# SMALLER slice, so make would find it up to date and hand back the previous
-# slice's image under the new slice's name. Building the range downwards, or
-# revisiting any slice, would then silently measure the wrong thing.
-.PHONY: bisect
-bisect:
-	@rm -f build/$(RAPI_BOARD)-bisect/$(IMAGE).img build/$(RAPI_BOARD)-bisect/$(IMAGE).elf
-	@$(MAKE) --no-print-directory RAPI_BOARD=$(RAPI_BOARD) \
-		OBJDIR=build/$(RAPI_BOARD)-bisect \
-		BISECT_N=$(BISECT_N) bisect-link
-
-.PHONY: bisect-link
-bisect-link: $(wordlist 1,$(BISECT_N),$(BISECT_ALL))
-	@$(MAKE) --no-print-directory RAPI_BOARD=$(RAPI_BOARD) \
-		OBJDIR=$(OBJDIR) \
-		CD_SRCS= CD_OBJS='$(wordlist 1,$(BISECT_N),$(BISECT_ALL))' \
-		HOST_SRCS="main.cpp kernel.cpp defaults.cpp circle_syscalls.cpp circle_stubs.cpp stub_doom.cpp" \
-		LDFLAGS_EXTRA=--unresolved-symbols=ignore-all \
-		image
-
-# The minimal reproducer: the traced stub plus ONE named game source and
-# nothing else from the game. Same rules as the bisection — linked, never
-# called, undefined references ignored.
-#
-#   make minimal RAPI_BOARD=rpi5 MINIMAL_SRC=src/doom/r_data.c
-#
-MINIMAL_SRC ?= src/doom/r_data.c
-MINIMAL_OBJ  = build/$(RAPI_BOARD)-minimal/cd/$(MINIMAL_SRC:.c=.o)
-
-.PHONY: minimal
-minimal:
-	@rm -f build/$(RAPI_BOARD)-minimal/$(IMAGE).img build/$(RAPI_BOARD)-minimal/$(IMAGE).elf
-	@$(MAKE) --no-print-directory RAPI_BOARD=$(RAPI_BOARD) \
-		OBJDIR=build/$(RAPI_BOARD)-minimal \
-		CD_SRCS= CD_OBJS='$(MINIMAL_OBJ)' \
-		HOST_SRCS="main.cpp kernel.cpp defaults.cpp circle_syscalls.cpp circle_stubs.cpp stub_doom.cpp" \
-		LDFLAGS_EXTRA=--unresolved-symbols=ignore-all \
-		image
-
 # Board-scoped clean: drop just this board's tree, leaving the other two
 # boards' images and objects untouched.
 .PHONY: clean-board
 clean-board:
-	rm -rf $(OBJDIR) build/$(RAPI_BOARD)-stub build/$(RAPI_BOARD)-bisect build/$(RAPI_BOARD)-minimal
+	rm -rf $(OBJDIR) build/$(RAPI_BOARD)-stub

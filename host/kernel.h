@@ -73,19 +73,6 @@ public:
     TShutdownMode Run(void);
 
 private:
-    // Boot progress, written straight at the serial device rather than
-    // through the logger. Two reasons, and the second is the whole point:
-    // the logger is not up yet when the first of these is written, and a
-    // board that dies before the logger would otherwise produce nothing at
-    // all — which is indistinguishable from an image that was never entered.
-    //
-    // It borrows THIS KERNEL'S device. Nothing here may construct a serial
-    // device of its own: Circle's CSerialDevice claims its slot in its
-    // constructor and asserts if the slot is taken, so a second one on
-    // device 0 halts the board before the logger exists to say why — the
-    // instrument causing the exact failure it was built to find.
-    void Step(const char *pMessage);
-
     // No CScreenDevice: the SDL window owns the display.
     CActLED             m_ActLED;
     CKernelOptions      m_Options;

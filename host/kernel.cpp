@@ -30,7 +30,6 @@
 #include <SDL2/SDL_circle.h>
 #include <SDL2/SDL_error.h>
 #include <atomic>
-#include <cstring>
 
 // Chocolate Doom's entry point. It is main() in the upstream source; the
 // build renames it for that one translation unit, because main() here
@@ -180,49 +179,25 @@ static unsigned BuildEpoch(void)
     return (unsigned)(days * 86400L + hh*3600 + mm*60 + ss);
 }
 
-void CKernel::Step(const char *pMessage)
-{
-    m_Serial.Write("[init] ", 7);
-    m_Serial.Write(pMessage, strlen(pMessage));
-    m_Serial.Write("\r\n", 2);
-}
-
 boolean CKernel::Initialize(void)
 {
     boolean bOK = TRUE;
-
-    // The serial port first and on its own: until it is up there is nowhere
-    // to report anything, so this one step is the only one that cannot
-    // announce itself beforehand. Everything before this line — every member
-    // of this class being constructed, and every static constructor before
-    // that — is territory no message can reach.
-    bOK = m_Serial.Initialize(115200);
-    if (!bOK)
-        return FALSE;
-    Step("serial up");
-
-    Step("logger");
+    if (bOK) bOK = m_Serial.Initialize(115200);
     if (bOK) bOK = m_Logger.Initialize(&m_Serial);
-    Step("interrupts");
     if (bOK) bOK = m_Interrupt.Initialize();
-    Step("timer");
     if (bOK) bOK = m_Timer.Initialize();
     // No battery RTC on a Pi: seed the wall clock with the build time —
     // like a device whose clock was set once at the factory — so time()
     // is plausible. Doom stamps save games with it.
     if (bOK) m_Timer.SetTime(BuildEpoch(), FALSE /* universal */);
-    Step("sd card");
     if (bOK) bOK = m_EMMC.Initialize();
-    Step("filesystem");
     if (bOK) bOK = (f_mount(&m_FileSystem, "SD:", 1) == FR_OK);
-    Step("console");
     if (bOK) bOK = m_Console.Initialize();
     if (bOK) CGlueStdioInit(m_Console);
 
     // Core 0 runs application and library code like any other core, so it
     // arms itself too — before the secondary cores start, and before the
     // first thing that can throw.
-    Step("core runtime");
     if (bOK) SDL2Circle_ArmCoreRuntime();
 
     // Start the secondary cores last: the world they are about to work in
@@ -231,16 +206,12 @@ boolean CKernel::Initialize(void)
     // in CSplitCores::Run until Run() below arms the split and opens the
     // gate.
     m_bSplit = m_Options.GetAppOptionDecimal("rapi-split", 1) != 0;
-    Step(m_bSplit ? "secondary cores" : "secondary cores skipped (rapi-split=0)");
     if (bOK && m_bSplit) bOK = m_Cores.Initialize();
-
-    Step(bOK ? "initialize complete" : "INITIALIZE FAILED");
     return bOK;
 }
 
 TShutdownMode CKernel::Run(void)
 {
-    Step("run entered");
     m_Logger.Write(From, LogNotice, "starting Chocolate Doom");
 
     // Geometry evidence belongs on serial: what boot config handed us, read
@@ -269,7 +240,6 @@ TShutdownMode CKernel::Run(void)
     // start.
     static const int VIRTUAL_WIDTH  = 320;
     static const int VIRTUAL_HEIGHT = 240;
-    Step("declaring virtual display");
     if (SDL2Circle_DeclareVirtualDevice(32, VIRTUAL_WIDTH, VIRTUAL_HEIGHT) != 0)
     {
         m_Logger.Write(From, LogError, "virtual display %dx%d refused: %s",
@@ -296,7 +266,6 @@ TShutdownMode CKernel::Run(void)
     // Build the game's argument list before anything else looks at it: the
     // baked arguments, plus whatever a pre-boot writer stamped into the
     // image. Kernel switches are taken out here and never reach the game.
-    Step("reading defaults block");
     s_FinalArgc = DefaultsBuildArgv(DoomArgv,
                                     sizeof(DoomArgv) / sizeof(DoomArgv[0]),
                                     s_FinalArgv,
@@ -329,9 +298,7 @@ TShutdownMode CKernel::Run(void)
         // Arm the split before the application's first instruction: the
         // servo and watchdog on core 0, and the mailboxes every marshalled
         // call rides. Then open the gate.
-        Step("arming the core split");
         SDL2Circle_SplitInit();
-        Step("releasing the application core");
         s_AppGate.store(1, std::memory_order_release);
         PublishToOtherCores();
 
