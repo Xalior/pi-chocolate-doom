@@ -28,7 +28,6 @@
 // archive is linked whole, so a leftover stub becomes a duplicate-symbol
 // error at link time rather than a silent winner over the real thing.
 //
-#include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
