@@ -23,6 +23,8 @@
 // circle_syscalls.cpp.
 //
 #include "kernel.h"
+#include "defaults.h"
+#include "defaultsblock.h"
 #include <circle/startup.h>
 #include <circle/machineinfo.h>
 #include <SDL2/SDL_circle.h>
@@ -56,12 +58,22 @@ static const char From[] = "chocolate-doom";
 // -nomouse because this port has no working pointer yet. The shim answers
 // every mouse call, but the pointer it reports never moves, and Doom's mouse
 // grab would otherwise sit in the middle of the input path doing nothing.
+//
+// These are the BAKED arguments. Anything written into the image's defaults
+// block is appended to them before the game runs, so a boot can add to this
+// without the card or the build changing.
 static const char *DoomArgv[] = {
     "/doom/chocolate-doom",
     "-nomouse",
 };
 
-static const int DoomArgc = sizeof(DoomArgv) / sizeof(DoomArgv[0]);
+// The final list: the baked arguments, plus whatever the block carries.
+// Sized for the block's worst case — every byte of its capacity a
+// single-character argument — on top of the baked ones, plus the
+// terminating null.
+static const char *s_FinalArgv[sizeof(DoomArgv) / sizeof(DoomArgv[0])
+                               + DEFAULTS_BUFFER_BYTES / 2 + 1];
+static int s_FinalArgc = 0;
 
 // ---------------------------------------------------------------------------
 // The gate between core 0 and the application core.
@@ -108,7 +120,7 @@ void CSplitCores::Run(unsigned nCore)
         while (!s_AppGate.load(std::memory_order_acquire))
             asm volatile("wfe" ::: "memory");
 
-        s_AppResult = doom_main(DoomArgc, const_cast<char **>(DoomArgv));
+        s_AppResult = doom_main(s_FinalArgc, const_cast<char **>(s_FinalArgv));
 
         s_AppDone.store(1, std::memory_order_release);
         PublishToOtherCores();
@@ -251,27 +263,31 @@ TShutdownMode CKernel::Run(void)
                    CMachineInfo::Get()->GetClockRate(CLOCK_ID_CORE) / 1000000,
                    CKernelOptions::Get()->GetSoCMaxTemp());
 
-    // Serial key injection, if the card asked for it. Armed HERE, before the
-    // split is armed and before the application core is let go: the shim's
-    // injection pump runs in the hardware core's servo, which is where
-    // reading the serial port is legal, and that servo does not exist until
-    // SDL2Circle_SplitInit below. Arming after that point would race the
-    // first pump; arming before it cannot.
-    if (m_Options.GetAppOptionDecimal("rapi-debug-uart", 0) != 0)
+    // Build the game's argument list before anything else looks at it: the
+    // baked arguments, plus whatever a pre-boot writer stamped into the
+    // image. Kernel switches are taken out here and never reach the game.
+    s_FinalArgc = DefaultsBuildArgv(DoomArgv,
+                                    sizeof(DoomArgv) / sizeof(DoomArgv[0]),
+                                    s_FinalArgv,
+                                    sizeof(s_FinalArgv) / sizeof(s_FinalArgv[0]));
+
+    // Serial key injection, if the block asked for it. Armed HERE, before
+    // the split is armed and before the application core is let go: the
+    // shim's injection pump runs in the hardware core's servo, which is
+    // where reading the serial port is legal, and that servo does not exist
+    // until SDL2Circle_SplitInit below. Arming after that point would race
+    // the first pump; arming before it cannot.
+    if (rapi_debug_uart)
     {
         SDL2Circle_SetInjectSerial(&m_Serial);
         m_Logger.Write(From, LogNotice,
-                       "serial key injection armed (rapi-debug-uart)");
+                       "serial key injection armed (--rapi-debug-uart)");
     }
 
-    // Performance reports: one serial line every N seconds, frame rate then
-    // the cycle split. Off unless the card asks.
-    unsigned nPerf = m_Options.GetAppOptionDecimal("rapi-perf", 0);
-    if (nPerf > 0)
-    {
-        SDL2Circle_SetPerfInterval(nPerf);
-        m_Logger.Write(From, LogNotice, "performance reports every %us", nPerf);
-    }
+    // Performance reports — one serial line every N seconds, frame rate then
+    // the cycle split — come from the library. Nothing to wire here: the
+    // defaults block's `--rapi-perf=N` was consumed above, which is where
+    // SDL2Circle_SetPerfInterval gets called (see defaults.cpp).
 
     int res;
     if (m_bSplit)
@@ -300,7 +316,7 @@ TShutdownMode CKernel::Run(void)
         // path. The secondary cores were never started.
         m_Logger.Write(From, LogNotice,
                        "core split disabled (rapi-split=0): everything on core 0");
-        res = doom_main(DoomArgc, const_cast<char **>(DoomArgv));
+        res = doom_main(s_FinalArgc, const_cast<char **>(s_FinalArgv));
     }
 
     // Park instead of rebooting. A reboot stops the clocks with the UART

@@ -56,7 +56,7 @@ TARGET = $(OBJDIR)/$(IMAGE)
 
 # Stated explicitly because the first rule this file sees comes from an
 # included makefile, and that would otherwise decide the default goal.
-.DEFAULT_GOAL := $(TARGET).img
+.DEFAULT_GOAL := image
 
 # ---------------------------------------------------------------------------
 # Sources
@@ -64,7 +64,8 @@ TARGET = $(OBJDIR)/$(IMAGE)
 
 # The kernel wrapper, the syscall layer and this port's own SDL layers: C++,
 # and this project's own code.
-HOST_SRCS = main.cpp kernel.cpp circle_syscalls.cpp circle_stubs.cpp
+HOST_SRCS = main.cpp kernel.cpp defaults.cpp circle_syscalls.cpp \
+	circle_stubs.cpp
 HOST_OBJS = $(addprefix $(OBJDIR)/,$(HOST_SRCS:.cpp=.o))
 
 # Chocolate Doom's source list for the Doom executable, as upstream's
@@ -198,6 +199,14 @@ DOOM_CFLAGS = -std=gnu99 $(DOOM_DEFINE) $(CFLAGS)
 # of the build and nothing here has to imitate a library it does not have.
 DOOM_DEFINE = -DDISABLE_SDL2MIXER=1 -DDISABLE_SDL2NET=1
 
+# Set only by the `stub` target below, and empty for every real build.
+ifneq ($(STUB_PAD),)
+DEFINE += -DSTUB_PAD_BYTES=$(STUB_PAD)
+endif
+ifeq ($(STUB_PAD_LANG),c)
+DEFINE += -DSTUB_PAD_IN_C=1
+endif
+
 # The shim comes in whole, every member, rather than only the members the
 # link happens to need. An object file linked straight into the kernel beats
 # an archive member of the same name and does it silently, so a stub in
@@ -268,6 +277,13 @@ $(OBJDIR)/%.o: %.cpp | $(OBJDIR)
 $(OBJDIR)/%.d: %.cpp | $(OBJDIR)
 	@$(CPP) $(CPPFLAGS) -M -MG -MT $(@:.d=.o) -MT $@ -MF $@ $<
 
+# This directory's own C sources — only the bisection pad — built with the
+# same compiler and the same flags the game's C files get, which is the whole
+# point of it.
+$(OBJDIR)/%.o: %.c | $(OBJDIR)
+	@echo "  CC    $@"
+	@$(CC) $(DOOM_CFLAGS) -c -o $@ $<
+
 # Chocolate Doom's objects, mirroring its source tree under $(OBJDIR)/cd/.
 # The source tree itself is the upstream submodule, and is never written to.
 $(OBJDIR)/cd/%.o: $(DOOM)/%.c
@@ -298,11 +314,50 @@ $(OBJDIR):
 
 -include $(DEPS)
 
-# The image link rule, from the shim.
+# The image link rule. sdl-app.mk lets the caller choose the linker script,
+# so this build supplies its own: the shim's script with room made at image
+# offset 0x800 for the patchable-defaults block. Everything else about the
+# script — including the TLS-section adjacency binutils 2.44 and later
+# require — is inherited from the shim's.
+SDL_APP_LDSCRIPT = $(CURDIR)/chocolate-doom-defaults.ld
 include $(SHIM)/sdl-app.mk
+
+# The other half of the guarantee the linker script's ASSERTs begin: check
+# the BYTES of the finished image, not just the link. A pre-boot writer
+# refuses to stamp an image whose magic is not at 0x800, so an image that
+# lost it would boot and then quietly ignore everything ever sent to it —
+# including --rapi-debug-uart, which is the channel used to drive the board
+# when nobody is at the bench. Better to have no image than that one.
+.PHONY: image
+image: $(TARGET).img
+	@if [ "`dd if=$(TARGET).img bs=4 skip=512 count=1 2>/dev/null`" = "PM8D" ]; \
+	then \
+		echo "  GATE  $(TARGET).img defaults block at 0x800: present"; \
+	else \
+		echo "  GATE  $(TARGET).img: defaults block ABSENT at 0x800 — image deleted"; \
+		rm -f $(TARGET).img; \
+		exit 1; \
+	fi
+
+# The bisection image: the host scaffolding with the game's objects replaced
+# by one stub that reports it was reached (see stub_doom.cpp). It is built
+# into its own directory so it never sits where the real image belongs and
+# cannot be picked up by mistake.
+#
+# The gate is applied to it too. An instrument that cannot be driven by the
+# same pre-boot writer as the real image is an instrument that answers a
+# different question from the one being asked.
+.PHONY: stub
+stub:
+	@$(MAKE) --no-print-directory RAPI_BOARD=$(RAPI_BOARD) \
+		OBJDIR=build/$(RAPI_BOARD)-stub \
+		CD_SRCS= CD_OBJS='$(if $(filter c,$(STUB_PAD_LANG)),build/$(RAPI_BOARD)-stub/stub_pad.o)' \
+		HOST_SRCS="main.cpp kernel.cpp defaults.cpp circle_syscalls.cpp circle_stubs.cpp stub_doom.cpp" \
+		STUB_PAD='$(STUB_PAD_BYTES)' STUB_PAD_LANG='$(STUB_PAD_LANG)' \
+		image
 
 # Board-scoped clean: drop just this board's tree, leaving the other two
 # boards' images and objects untouched.
 .PHONY: clean-board
 clean-board:
-	rm -rf $(OBJDIR)
+	rm -rf $(OBJDIR) build/$(RAPI_BOARD)-stub
