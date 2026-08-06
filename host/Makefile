@@ -374,8 +374,15 @@ stub:
 BISECT_ALL = $(filter-out $(OBJDIR)/cd/src/i_main.o,$(CD_OBJS))
 BISECT_N  ?= 0
 
+# The image is DELETED before every link. The objects are deliberately kept
+# between slices so a bisection step costs a link rather than 150 compiles —
+# but that leaves an image on disk that is newer than every object in a
+# SMALLER slice, so make would find it up to date and hand back the previous
+# slice's image under the new slice's name. Building the range downwards, or
+# revisiting any slice, would then silently measure the wrong thing.
 .PHONY: bisect
 bisect:
+	@rm -f build/$(RAPI_BOARD)-bisect/$(IMAGE).img build/$(RAPI_BOARD)-bisect/$(IMAGE).elf
 	@$(MAKE) --no-print-directory RAPI_BOARD=$(RAPI_BOARD) \
 		OBJDIR=build/$(RAPI_BOARD)-bisect \
 		BISECT_N=$(BISECT_N) bisect-link
