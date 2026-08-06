@@ -200,7 +200,7 @@ game wants, because a slowed processor drops frames.
 |---|---|
 | `kernel.cpp`, `kernel.h`, `main.cpp` | The Circle kernel: brings up the serial console, the SD card and the filesystem, elects the three cores, and calls the game. |
 | `circle_syscalls.cpp` | Puts the SD card underneath the C library in a way that is legal from a core that does not own the hardware. |
-| `circle_stubs.cpp` | The 8-bit paletted surfaces and the once-a-frame conversion to 32-bit that Doom's rendering needs, which the SDL2 layer does not implement. |
+| `circle_stubs.cpp` | The 8-bit paletted surface support Doom's screen buffer needs, which the SDL2 layer's `SDL_CreateRGBSurface` does not make. |
 | `sdl2ext/config.h` | The build configuration upstream's own build system would otherwise generate. |
 | `config.txt`, `cmdline.txt` | Firmware boot configuration, one file for all three boards. |
 | `chocolate-doom.cfg`, `default.cfg` | The game's settings, staged onto the card. |
