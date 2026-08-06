@@ -396,8 +396,27 @@ bisect-link: $(wordlist 1,$(BISECT_N),$(BISECT_ALL))
 		LDFLAGS_EXTRA=--unresolved-symbols=ignore-all \
 		image
 
+# The minimal reproducer: the traced stub plus ONE named game source and
+# nothing else from the game. Same rules as the bisection — linked, never
+# called, undefined references ignored.
+#
+#   make minimal RAPI_BOARD=rpi5 MINIMAL_SRC=src/doom/r_data.c
+#
+MINIMAL_SRC ?= src/doom/r_data.c
+MINIMAL_OBJ  = build/$(RAPI_BOARD)-minimal/cd/$(MINIMAL_SRC:.c=.o)
+
+.PHONY: minimal
+minimal:
+	@rm -f build/$(RAPI_BOARD)-minimal/$(IMAGE).img build/$(RAPI_BOARD)-minimal/$(IMAGE).elf
+	@$(MAKE) --no-print-directory RAPI_BOARD=$(RAPI_BOARD) \
+		OBJDIR=build/$(RAPI_BOARD)-minimal \
+		CD_SRCS= CD_OBJS='$(MINIMAL_OBJ)' \
+		HOST_SRCS="main.cpp kernel.cpp defaults.cpp circle_syscalls.cpp circle_stubs.cpp stub_doom.cpp" \
+		LDFLAGS_EXTRA=--unresolved-symbols=ignore-all \
+		image
+
 # Board-scoped clean: drop just this board's tree, leaving the other two
 # boards' images and objects untouched.
 .PHONY: clean-board
 clean-board:
-	rm -rf $(OBJDIR) build/$(RAPI_BOARD)-stub build/$(RAPI_BOARD)-bisect
+	rm -rf $(OBJDIR) build/$(RAPI_BOARD)-stub build/$(RAPI_BOARD)-bisect build/$(RAPI_BOARD)-minimal
