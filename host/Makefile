@@ -203,6 +203,9 @@ DOOM_DEFINE = -DDISABLE_SDL2MIXER=1 -DDISABLE_SDL2NET=1
 ifneq ($(STUB_PAD),)
 DEFINE += -DSTUB_PAD_BYTES=$(STUB_PAD)
 endif
+ifneq ($(STUB_BSS),)
+DEFINE += -DSTUB_BSS_BYTES=$(STUB_BSS)
+endif
 ifeq ($(STUB_PAD_LANG),c)
 DEFINE += -DSTUB_PAD_IN_C=1
 endif
@@ -354,6 +357,7 @@ stub:
 		CD_SRCS= CD_OBJS='$(if $(filter c,$(STUB_PAD_LANG)),build/$(RAPI_BOARD)-stub/stub_pad.o)' \
 		HOST_SRCS="main.cpp kernel.cpp defaults.cpp circle_syscalls.cpp circle_stubs.cpp stub_doom.cpp" \
 		STUB_PAD='$(STUB_PAD_BYTES)' STUB_PAD_LANG='$(STUB_PAD_LANG)' \
+		STUB_BSS='$(STUB_BSS_BYTES)' \
 		image
 
 # Board-scoped clean: drop just this board's tree, leaving the other two

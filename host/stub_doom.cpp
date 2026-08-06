@@ -27,6 +27,14 @@
 //
 #include <circle/logger.h>
 
+#ifdef STUB_BSS_BYTES
+// Zero-initialised, so it lands in .bss and costs the image NOTHING on disk
+// — it is memory the kernel claims and clears at startup, not bytes that are
+// loaded. volatile and used so nothing discards an array no one reads.
+// This is the axis the real games differ on and the pads did not.
+unsigned char g_stub_bss[STUB_BSS_BYTES] __attribute__ ((used));
+#endif
+
 #ifdef STUB_PAD_IN_C
 extern "C" const volatile unsigned char g_stub_pad[];
 #endif
@@ -44,6 +52,11 @@ extern "C" int doom_main(int argc, char *argv[])
                           "stub payload reached: host scaffolding boots");
     CLogger::Get()->Write("stub", LogNotice, "argc = %d, argv[0] = %s",
                           argc, argc > 0 ? argv[0] : "(none)");
+#ifdef STUB_BSS_BYTES
+    g_stub_bss[0] = 1;
+    CLogger::Get()->Write("stub", LogNotice, "inert bss: %u bytes, first %u",
+                          (unsigned) STUB_BSS_BYTES, (unsigned) g_stub_bss[0]);
+#endif
 #ifdef STUB_PAD_BYTES
     CLogger::Get()->Write("stub", LogNotice, "inert pad: %u bytes (%s), first %c%c%c",
                           (unsigned) STUB_PAD_BYTES,
