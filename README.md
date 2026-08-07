@@ -233,32 +233,6 @@ pin changes what happens at that temperature: the fan is switched on and the
 processor is left at full speed, instead of being slowed down. That is what a
 game wants, because a slowed processor drops frames.
 
-### Boot options
-
-`cmdline.txt` also accepts switches this kernel reads:
-
-| Option | Effect |
-|---|---|
-| `rapi-perf=N` | Print a performance line to the serial console every N seconds. |
-| `rapi-debug-uart` | Accept key presses from the serial console, so a board with no keyboard attached can still be driven. |
-
-## How the layers fit
-
-`host/` holds everything this repository adds, and nothing else:
-
-| File | What it is |
-|---|---|
-| `kernel.cpp`, `kernel.h`, `main.cpp` | The Circle kernel: brings up the serial console, the SD card and the filesystem, elects the three cores, and calls the game. |
-| `circle_syscalls.cpp` | Puts the SD card underneath the C library in a way that is legal from a core that does not own the hardware. |
-| `circle_stubs.cpp` | The 8-bit paletted surface support Doom's screen buffer needs, which the SDL2 layer's `SDL_CreateRGBSurface` does not make. |
-| `sdl2ext/config.h` | The build configuration upstream's own build system would otherwise generate. |
-| `config.txt`, `cmdline.txt` | Firmware boot configuration, one file for all three boards. |
-| `chocolate-doom.cfg`, `default.cfg` | The game's settings, staged onto the card. |
-
-The game's entry point is renamed by the preprocessor for one file, so that
-`main` belongs to the Circle kernel and the game is a function it calls. That
-is the whole of the intrusion into upstream: no patch, no fork, no edit.
-
 ## License
 
 The code in this repository — the kernel layer in `host/` and the build — is
