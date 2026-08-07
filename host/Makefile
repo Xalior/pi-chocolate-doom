@@ -234,17 +234,25 @@ INCLUDE := -I $(SHIM)/include -I $(SHIM)/include/SDL2 \
 # warning on every C++ file in the build. $(STANDARD) above covers those.
 DOOM_CFLAGS = -std=gnu99 $(RAPI_CFLAGS) $(DOOM_DEFINE) $(CFLAGS)
 
-# SDL_mixer and SDL_net are separate libraries from SDL2, and
-# circle-libsdl2 provides neither: it implements SDL's own audio API and has
-# no network stack behind it. Chocolate Doom carries a build for exactly this
-# case, and these are the switches that select it — upstream's own, offered
-# by its CMakeLists as ENABLE_SDL2_MIXER and ENABLE_SDL2_NET.
+# SDL_net is a separate library from SDL2 and circle-libsdl2 does not provide
+# it: there is no network stack behind the shim. Chocolate Doom carries a
+# build for exactly this case, and this is the switch that selects it —
+# upstream's own, offered by its CMakeLists as ENABLE_SDL2_NET.
 #
-# What they change is which code exists. Every sound and music backend, and
-# the network transport, compile to a version that reports it cannot start,
-# so the game runs silent and single player and says why. Nothing is cut out
-# of the build and nothing here has to imitate a library it does not have.
-DOOM_DEFINE = -DDISABLE_SDL2MIXER=1 -DDISABLE_SDL2NET=1
+# What it changes is which code exists. The network transport compiles to a
+# version that reports it cannot start, so the game runs single player and
+# says why. Nothing is cut out of the build and nothing here has to imitate a
+# library it does not have.
+#
+# SDL_mixer's switch is deliberately NOT here. The shim implements SDL_mixer
+# in the same archive as the rest of SDL, so sound effects come from the
+# ordinary build with nothing cut out.
+#
+# Every music backend is built too, the OPL one included — the game emulates
+# an OPL2 chip itself, so it needs no MIDI synthesiser from anyone. Which
+# music backend runs, if any, is chosen by snd_musicdevice in
+# chocolate-doom.cfg, and that file says what today's choice is and why.
+DOOM_DEFINE = -DDISABLE_SDL2NET=1
 
 # The shim comes in whole, every member, rather than only the members the
 # link happens to need. An object file linked straight into the kernel beats
