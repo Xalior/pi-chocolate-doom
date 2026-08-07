@@ -75,10 +75,10 @@ TARGET = $(OBJDIR)/$(IMAGE)
 # Sources
 # ---------------------------------------------------------------------------
 
-# The kernel wrapper, the syscall layer and this port's own SDL layers: C++,
-# and this project's own code.
-HOST_SRCS = main.cpp kernel.cpp defaults.cpp circle_syscalls.cpp \
-	circle_stubs.cpp
+# The kernel wrapper and the syscall layer: C++, and this project's own code.
+# Nothing here implements any part of SDL — every SDL function the game calls
+# comes from the shim archive.
+HOST_SRCS = main.cpp kernel.cpp defaults.cpp circle_syscalls.cpp
 HOST_OBJS = $(addprefix $(OBJDIR)/,$(HOST_SRCS:.cpp=.o))
 
 # Chocolate Doom's source list for the Doom executable, as upstream's
@@ -256,11 +256,15 @@ DOOM_DEFINE = -DDISABLE_SDL2NET=1
 
 # The shim comes in whole, every member, rather than only the members the
 # link happens to need. An object file linked straight into the kernel beats
-# an archive member of the same name and does it silently, so a stub in
-# circle_stubs.cpp left behind after the library implemented the real thing
-# would quietly win — the game would keep calling the stub and nothing would
+# an archive member of the same name and does it silently, so a local copy of
+# an SDL function left behind after the library implemented the real thing
+# would quietly win — the game would keep calling the copy and nothing would
 # say so. Pulling the archive in whole turns that into a duplicate-symbol
 # error at link time, which is the only moment it can still be cheap to fix.
+#
+# This guard has one blind spot, and it is why the --wrap note below exists:
+# a wrapped name is a renamed reference and never a second definition, so no
+# duplicate can arise for the linker to object to.
 SHIM_LIB = $(SHIM)/libSDL2-$(RAPI_BOARD).a
 
 LIBS = --whole-archive $(SHIM_LIB) --no-whole-archive \
@@ -301,27 +305,18 @@ WRAPPED_SYSCALLS = \
 	_fcntl mkdir chdir getcwd dup dup2 \
 	opendir readdir closedir rewinddir
 
-# ---------------------------------------------------------------------------
-# Two SDL functions the shim owns and this port extends
-# ---------------------------------------------------------------------------
-#
-# circle-libsdl2 implements SDL_CreateRGBSurface and SDL_FreeSurface for
-# 32-bit surfaces and refuses anything else. Doom's screen buffer is 8-bit
-# paletted, so this port adds that case — and adding it means intercepting
-# the pair, because a surface with a palette cannot be freed by a function
-# that knows nothing about palettes.
-#
-# --wrap for the same reason as the syscalls above: it leaves the library's
-# implementations in place and reachable as __real_*, so the wrapper in
-# circle_stubs.cpp handles the paletted case and hands every other one
-# straight back. A plain redefinition would collide with the archive, which
-# is linked whole precisely so that it does.
-WRAPPED_SDL = SDL_CreateRGBSurface SDL_FreeSurface
+# NOTHING OF SDL IS WRAPPED HERE, and nothing of SDL ever should be. A --wrap
+# renames a reference rather than defining a second symbol, so the whole-
+# archive link above — which turns a leftover local copy of a library function
+# into a duplicate-symbol error — cannot see one. A wrapped SDL function is
+# therefore the one kind of private SDL that could sit here for years without
+# anything saying so. Whatever the game needs from SDL, the library provides;
+# where it does not, the library is what gets fixed.
 
 # The link is driven by the cross ld directly (Circle's Rules.mk sets
 # LD = <prefix>ld for GCC builds), so these are plain linker options, not
 # compiler-driver -Wl, ones.
-LDFLAGS += $(addprefix --wrap=,$(WRAPPED_SYSCALLS) $(WRAPPED_SDL))
+LDFLAGS += $(addprefix --wrap=,$(WRAPPED_SYSCALLS))
 
 # ---------------------------------------------------------------------------
 # Compilation
