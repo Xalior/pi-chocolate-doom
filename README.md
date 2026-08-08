@@ -27,48 +27,24 @@ pinned at an upstream commit, and the build reads it without ever writing to
 it. Where the game needs something the SDL2 layer does not provide, this
 repository supplies it in `host/` rather than changing the game.
 
-Three processor cores are given separate work:
+The game draws at 320x200, the size Doom has always drawn at, and the picture
+is scaled once onto whatever your screen actually is.
 
-- **Core 0** owns the hardware. Circle's world lives here — interrupts, USB,
-  the SD card, sound — and no other core touches a device.
-- **Core 1** runs the game and nothing else.
-- **Core 2** puts finished frames on the screen. The game draws at 320x200,
-  the size Doom has always drawn at, and never learns the display's size; the
-  picture is scaled once, at the end, onto whatever the screen is really
-  showing.
+## What works
 
-## State of this port
+The game plays at full speed on all three boards.
 
-It builds for all three boards and it plays. The screenshot above is the Pi
-5's own HDMI output, with the game reading its WAD from the SD card and
-rendering at full speed.
+- **Picture.** The full 320x200 rendering Doom has always had, scaled to your
+  screen.
+- **Sound and music.** Sound effects, and the music through Doom's own
+  emulation of the OPL2 chip it was written for — no external synthesiser and
+  no MIDI hardware involved.
+- **Keyboard and mouse.** Both, including mouse movement for turning.
+- **Saved games and settings.** Written back to the SD card, so they survive
+  a power cut.
 
-**Present:**
-
-- Video: the full 320x200 paletted rendering path, converted to 32-bit once
-  per frame and scaled to the display.
-- Keyboard: USB keyboards through Circle's HID driver.
-- Files: the WAD, the configuration files and the save games, read from and
-  written to the SD card.
-
-**Absent, and why:**
-
-- **Sound and music.** Chocolate Doom's sound and music backends are all
-  written against SDL_mixer, which is a separate library from SDL2 and which
-  circle-libsdl2 does not provide. The game is built with upstream's own
-  `DISABLE_SDL2MIXER`, so every backend compiles to a version that reports it
-  cannot start, and the game runs silent and says why. The underlying audio
-  output does exist — circle-libsdl2 implements SDL's own audio API — so what
-  is missing is a mixer between the two.
-- **Mouse.** Works. circle-libsdl2 drives a real USB mouse — the whole SDL
-  mouse API, relative mode included — and it has been exercised on the
-  bench: the pointer tracks, a button held across a movement produces a
-  drag, and the wheel reports. This port used to start with `-nomouse`
-  because that driver did not exist. It does now, and the flag is gone.
-- **Multiplayer.** Chocolate Doom's network transport is written against
-  SDL_net, which circle-libsdl2 also does not provide. Upstream's own
-  `DISABLE_SDL2NET` selects the build without it, so the game is single
-  player.
+Multiplayer is the one thing missing: the network game is not built, so this
+is single player.
 
 ## What you need to supply
 
@@ -96,8 +72,8 @@ make media
 ```
 
 fetches the freely redistributable set — `doom1.wad`, `freedoom1.wad`,
-`freedoom2.wad`, `freedm.wad`, `chex.wad`, and the freeware PWAD `scythe.wad`
-described below — into `media/`, verifying each against a published checksum
+`freedoom2.wad`, `freedm.wad` and `chex.wad` — into `media/`, verifying each
+against a published checksum
 where one exists and against the file's own magic and size otherwise. It
 writes `media/provenance.txt` naming exactly where each file came from and
 under what licence. Re-running it re-verifies what is already there rather
@@ -114,9 +90,8 @@ licence, a paywall or a copy-protection system.
 `make card` stages every recognised WAD it finds in `media/`, not just one,
 so a card can carry the whole set — the port picks between them at boot.
 
-Chocolate Doom's own search order, read from its `src/d_iwad.c`, is a fixed
-table checked in this order, and the first name in the table that exists in
-the game's directory on the card wins:
+Chocolate Doom checks a fixed list of names in this order, and the first one
+that exists in the game's directory on the card wins:
 
     doom2.wad, plutonia.wad, tnt.wad, doom.wad, doom1.wad, doom2f.wad,
     chex.wad, hacx.wad, freedoom2.wad, freedoom1.wad, freedm.wad,
@@ -126,26 +101,9 @@ So a card carrying only the free set fetched by `make media` boots
 `doom1.wad` by default — it is earlier in the table than `chex.wad`,
 `freedoom2.wad`, `freedoom1.wad` and `freedm.wad`, all of which are present.
 
-To force a specific IWAD regardless of table order, pass `-iwad <filename>`
-as a game argument — for example `-iwad freedoom2.wad`. Game arguments reach
-this port through the image's defaults block, a plain text argument string a
-pre-boot writer stamps into the image at a fixed offset (see
-`host/defaultsblock.h`); this repository's own build ships that block empty,
-so an unwritten image falls back to the table order above.
-
-### Loading a PWAD
-
-`scythe.wad`, fetched by `make media`, is a freeware PWAD — a 32-level
-megawad for Doom II by Erik Alm, with a guest map by Kim "Torn" Bach,
-released 2003. `make card` stages it alongside the IWADs, but it does not
-load on its own: it needs a Doom II-compatible IWAD present (`doom2.wad`,
-`freedoom2.wad` or `freedm.wad`) and Chocolate Doom's own `-file` argument
-to merge it in:
-
-    -file scythe.wad
-
-That combines with an `-iwad` override in the same defaults-block string,
-for example `-iwad freedoom2.wad -file scythe.wad`.
+Which one boots is decided by that table and nothing else, so the way to
+choose is to put only the IWAD you want to play in the game's directory on
+the card and leave the others off it.
 
 ## Building
 
@@ -214,9 +172,8 @@ One thing is not staged and has to be added by hand:
 
 `doom/chocolate-doom.cfg` is staged with settings this port needs, and each
 one is commented in the file itself. One of them matters more than the
-others: **`smooth_pixel_scaling` must stay at 0.** Smooth scaling renders
-through a second texture, and circle-libsdl2 cannot render into a texture, so
-with it switched on the game runs normally and the screen stays black.
+others: **`smooth_pixel_scaling` must stay at 0.** With it switched on the
+game runs normally and the screen stays black.
 
 Chocolate Doom rewrites both configuration files when it exits, so a change
 made on the card is the starting point rather than a permanent setting.
