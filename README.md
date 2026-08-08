@@ -178,17 +178,20 @@ game runs normally and the screen stays black.
 Chocolate Doom rewrites both configuration files when it exits, so a change
 made on the card is the starting point rather than a permanent setting.
 
-### The thermal settings in `cmdline.txt`
+### Keeping it cool
 
-One card boots any of the three boards, so all three read the same
-`cmdline.txt`. It carries `socmaxtemp=70`, the temperature in degrees Celsius
-at which the processor is slowed down to cool itself.
+The card carries `cmdline.txt`, which sets the temperature the board is
+allowed to reach and the pin its fan is on:
 
-If your board has a fan, add `gpiofanpin=` and the GPIO pin it is wired to —
-`gpiofanpin=45` is a Raspberry Pi 5 Case Fan or Active Cooler. Naming a fan
-pin changes what happens at that temperature: the fan is switched on and the
-processor is left at full speed, instead of being slowed down. That is what a
-game wants, because a slowed processor drops frames.
+    socmaxtemp=70 gpiofanpin=45
+
+Pin 45 is the Raspberry Pi 5 Case Fan and Active Cooler. With a fan named,
+reaching 70°C switches the fan on and the processor keeps running at full
+speed. Without one it would be slowed down instead, and a slowed processor
+drops frames — which is why the fan is the default here rather than something
+to add.
+
+If your fan is wired somewhere else, change the pin number.
 
 ## License
 
